@@ -1,50 +1,69 @@
 //MOVE SQUARE
 #![feature(globs)] //can use foo::*;
+#![feature(default_type_params)]
 
 extern crate graphics;
 extern crate piston;
-extern crate sdl2_game_window;
+extern crate sdl2_window;
 extern crate opengl_graphics;
+extern crate shader_version;
+extern crate event;
+extern crate input;
 
 use std::cmp::{max, min}; //use for edge behav
+use std::cell::RefCell;
 
-use opengl_graphics::{
-    Gl,
-};
-use sdl2_game_window::WindowSDL2;
-use graphics::*;
-use piston::{
-    EventIterator,
-    EventSettings,
-    WindowSettings,
-    Input,
-    Render,
-    Update
+use sdl2_window::Sdl2Window as Window;
+use opengl_graphics::Gl;
+use shader_version::opengl::OpenGL::_3_2;
+
+use piston::RenderArgs;
+
+use graphics::{
+    Context,
+    Rectangle,
 };
 
-use piston::input::keyboard::{
+
+use event::{
+    Event,
+    Events,
+    RenderEvent,
+    UpdateEvent,
+    PressEvent,
+    ReleaseEvent,
+    WindowSettings
+};
+
+use input::Button;
+
+use input::keyboard::Key::{
     Up, Down, Left, Right,
     W, J
 
 };
 
-use piston::input::{
-    Keyboard,
-    Press,
-    Release
-};
 
 //for random jitter
 use std::rand;
 use std::rand::Rng;
 
-pub static GRID_HEIGHT: int = 5;
-pub static GRID_WIDTH: int = 5;
+//pub static GRID_HEIGHT: int = 5;
+//pub static GRID_WIDTH: int = 5;
 
-pub static BLOCK_SIZE: int = 100;
+//pub static BLOCK_SIZE: int = 100;
 
-pub static WINDOW_HEIGHT: int = GRID_HEIGHT * BLOCK_SIZE;
-pub static WINDOW_WIDTH: int = GRID_WIDTH * BLOCK_SIZE;
+//pub static WINDOW_HEIGHT: int = GRID_HEIGHT * BLOCK_SIZE;
+//pub static WINDOW_WIDTH: int = GRID_WIDTH * BLOCK_SIZE;
+//pub static WINDOW_HEIGHT: int = 500;
+//pub static WINDOW_WIDTH: int = 500;
+const GRID_HEIGHT: int = 5;
+const GRID_WIDTH: int = 5;
+
+const BLOCK_SIZE: int = 100;
+
+const WINDOW_HEIGHT: int = GRID_HEIGHT * BLOCK_SIZE;
+const WINDOW_WIDTH: int = GRID_WIDTH * BLOCK_SIZE;
 
 enum Direction {
     UpDir,
@@ -55,24 +74,31 @@ enum Direction {
 }
 
 struct GameState {
+    gl: Gl,
     pub x: int, pub y: int,
     pub max_x: int, pub max_y: int,
 
     pub edge_behav: bool, //false-stop, true-wrap
     pub jitter_behav: bool, //true-jitters
-    pub next_mov: Direction //direction of movement in the next tick. Stop means no mov
+    pub next_mov: Direction, //direction of movement in the next tick. Stop means no mov
+
+    jitter_counter: uint,
+    slide_counter: uint
 }
 
 impl GameState {
-    pub fn new(x: int, y: int, max_x: int, max_y: int, edge_behav: bool, jitter_behav: bool) -> GameState {
+    pub fn new(gl: Gl, x: int, y: int, max_x: int, max_y: int, edge_behav: bool, jitter_behav: bool) -> GameState {
         GameState {
+            gl: gl,
             x: x,
             y: y,
             max_x: max_x,
             max_y: max_y,
             edge_behav: edge_behav,
             jitter_behav: jitter_behav,
-            next_mov: Stop
+            next_mov: Direction::Stop,
+            jitter_counter: 11,
+            slide_counter: 11
         }
     }
 
@@ -100,7 +126,7 @@ impl GameState {
 
     pub fn jitter(&mut self) {
         if self.jitter_behav {
-            let mut rng = rand::task_rng();
+            let mut rng = rand::thread_rng();
             let r = rng.gen::<uint>() % 4; // %4 trick to get range 0-3
             match r {
                 0 => {self.mov(1, 0)},
@@ -111,11 +137,38 @@ impl GameState {
             }
         }
     }
+    fn render(&mut self, args: &RenderArgs) {
+        let c = &Context::abs(args.width as f64, args.height as f64);
+        graphics::clear(graphics::color::WHITE, &mut self.gl);
+        Rectangle::border([1.0, 0.0, 0.0, 1.0], 10.0).draw([
+            (self.x * BLOCK_SIZE) as f64,
+            (self.y * BLOCK_SIZE) as f64,
+            BLOCK_SIZE as f64,
+            BLOCK_SIZE as f64
+        ], c, &mut self.gl);
+    }
+    fn update(&mut self) {
+        self.jitter_counter += 1;
+        if self.jitter_counter == 12 {self.jitter_counter = 0; self.jitter()};
+
+        self.slide_counter += 1;
+        if self.slide_counter == 12 {
+            self.slide_counter = 0;
+            match self.next_mov {
+                Direction::UpDir => {self.mov(0, -1)},
+                Direction::DownDir => {self.mov(0, 1)},
+                Direction::LeftDir => {self.mov(-1, 0)},
+                Direction::RightDir => {self.mov(1,0)},
+                _ => {}
+            }
+        }
+    }
+
 }
 
 fn main() {
-    let mut window = WindowSDL2::new(
-        piston::shader_version::opengl::OpenGL_3_2,
+    let window = Window::new(
+        shader_version::OpenGL::_3_2,
         WindowSettings {
             title: "moving square".to_string(),
             size: [WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32],
@@ -125,72 +178,40 @@ fn main() {
         }
     );
 
-    let event_settings = EventSettings {
-            updates_per_second: 120,
-            max_frames_per_second: 60,
-        };
+    let window = RefCell::new(window);
 
-    let ref mut gl = Gl::new();
+    let mut game = GameState::new(Gl::new(_3_2), GRID_WIDTH/2, GRID_HEIGHT/2, GRID_WIDTH, GRID_HEIGHT, false, false);
 
-    let mut game = GameState::new(GRID_WIDTH/2, GRID_HEIGHT/2, GRID_WIDTH, GRID_HEIGHT, false, false);
-
-    let mut jitter_counter: uint = 11;
-    let mut slide_counter: uint = 11;
-
-    for event in EventIterator::new(&mut window, &event_settings) {
-        match event {
-            Render(args) => {
-                gl.viewport(0, 0, args.width as i32, args.height as i32);
-                let c = Context::abs(args.width as f64, args.height as f64);
-                c.rgb(1.0, 1.0, 1.0).draw(gl);
-                c.square(
-                        (game.x * BLOCK_SIZE) as f64,
-                        (game.y * BLOCK_SIZE) as f64,
-                        BLOCK_SIZE as f64
-                    )
-                    .margin(10.0)
-                    .border_radius(10.0)
-                    .rgb(1.0, 0.0, 0.0)
-                    .draw(gl);
-            },
-
-            Input(Press(Keyboard(key))) => {
-                match key {
-                    Up => {game.next_mov = UpDir},
-                    Down => {game.next_mov = DownDir},
-                    Left => {game.next_mov = LeftDir},
-                    Right => {game.next_mov = RightDir},
-                    W => {game.change_edge_behav()},
-                    J => {game.change_jitter_behav()},
-                    _ => {}
-                }
-            }
-
-            Input(Release(Keyboard(key))) => {
-                game.next_mov = match key {
-                      Up | Down | Left | Right => Stop,
-                      _ => game.next_mov
-                }
-            }
-
-            Update(_) => {
-                jitter_counter += 1;
-                if jitter_counter == 12 {jitter_counter = 0; game.jitter()};
-
-                slide_counter += 1;
-                if slide_counter == 12 {
-                    slide_counter = 0;
-                    match game.next_mov {
-                        UpDir => {game.mov(0, -1)},
-                        DownDir => {game.mov(0, 1)},
-                        LeftDir => {game.mov(-1, 0)},
-                        RightDir => {game.mov(1,0)},
+    for e in Events::new(&window) {
+        let e: Event<input::Input> = e;
+        e.press(|button| {
+            match button {
+                Button::Keyboard(key) => {
+                    match key {
+                        Up => {game.next_mov = Direction::UpDir},
+                        Down => {game.next_mov = Direction::DownDir},
+                        Left => {game.next_mov = Direction::LeftDir},
+                        Right => {game.next_mov = Direction::RightDir},
+                        W => {game.change_edge_behav()},
+                        J => {game.change_jitter_behav()},
                         _ => {}
                     }
-                }
+                },
+                _ => {}
             }
-            _ => {}
-
-        }
+        });
+        e.release(|button| {
+            match button {
+               Button::Keyboard(key) => {
+                    match key {
+                          Up | Down | Left | Right => {game.next_mov = Direction::Stop},
+                          _ => {}
+                    }
+                },
+                _ => {}
+            }
+        });
+        e.render(|r| game.render(r));
+        e.update(|_| game.update());
     }
 }
