@@ -1,6 +1,4 @@
 //MOVE SQUARE
-#![feature(globs)] //can use foo::*;
-#![feature(default_type_params)]
 
 extern crate graphics;
 extern crate piston;
@@ -48,22 +46,22 @@ use input::keyboard::Key::{
 use std::rand;
 use std::rand::Rng;
 
-//pub static GRID_HEIGHT: int = 5;
-//pub static GRID_WIDTH: int = 5;
+//pub static GRID_HEIGHT: isize = 5;
+//pub static GRID_WIDTH: isize = 5;
 
-//pub static BLOCK_SIZE: int = 100;
+//pub static BLOCK_SIZE: isize = 100;
 
-//pub static WINDOW_HEIGHT: int = GRID_HEIGHT * BLOCK_SIZE;
-//pub static WINDOW_WIDTH: int = GRID_WIDTH * BLOCK_SIZE;
-//pub static WINDOW_HEIGHT: int = 500;
-//pub static WINDOW_WIDTH: int = 500;
-const GRID_HEIGHT: int = 5;
-const GRID_WIDTH: int = 5;
+//pub static WINDOW_HEIGHT: isize = GRID_HEIGHT * BLOCK_SIZE;
+//pub static WINDOW_WIDTH: isize = GRID_WIDTH * BLOCK_SIZE;
+//pub static WINDOW_HEIGHT: isize = 500;
+//pub static WINDOW_WIDTH: isize = 500;
+const GRID_HEIGHT: isize = 5;
+const GRID_WIDTH: isize = 5;
 
-const BLOCK_SIZE: int = 100;
+const BLOCK_SIZE: isize = 100;
 
-const WINDOW_HEIGHT: int = GRID_HEIGHT * BLOCK_SIZE;
-const WINDOW_WIDTH: int = GRID_WIDTH * BLOCK_SIZE;
+const WINDOW_HEIGHT: isize = GRID_HEIGHT * BLOCK_SIZE;
+const WINDOW_WIDTH: isize = GRID_WIDTH * BLOCK_SIZE;
 
 enum Direction {
     UpDir,
@@ -75,19 +73,19 @@ enum Direction {
 
 struct GameState {
     gl: Gl,
-    pub x: int, pub y: int,
-    pub max_x: int, pub max_y: int,
+    pub x: isize, pub y: isize,
+    pub max_x: isize, pub max_y: isize,
 
     pub edge_behav: bool, //false-stop, true-wrap
     pub jitter_behav: bool, //true-jitters
     pub next_mov: Direction, //direction of movement in the next tick. Stop means no mov
 
-    jitter_counter: uint,
-    slide_counter: uint
+    jitter_counter: usize,
+    slide_counter: usize
 }
 
 impl GameState {
-    pub fn new(gl: Gl, x: int, y: int, max_x: int, max_y: int, edge_behav: bool, jitter_behav: bool) -> GameState {
+    pub fn new(gl: Gl, x: isize, y: isize, max_x: isize, max_y: isize, edge_behav: bool, jitter_behav: bool) -> GameState {
         GameState {
             gl: gl,
             x: x,
@@ -102,7 +100,7 @@ impl GameState {
         }
     }
 
-    pub fn mov(&mut self, x: int, y: int) {
+    pub fn mov(&mut self, x: isize, y: isize) {
         match self.edge_behav {
             //stopping behavior. `self.max_x - 1` because range is (0, len-1)
             false => { self.x = min(max(self.x + x, 0), self.max_x - 1);
@@ -127,7 +125,7 @@ impl GameState {
     pub fn jitter(&mut self) {
         if self.jitter_behav {
             let mut rng = rand::thread_rng();
-            let r = rng.gen::<uint>() % 4; // %4 trick to get range 0-3
+            let r = rng.gen::<usize>() % 4; // %4 trick to get range 0-3
             match r {
                 0 => {self.mov(1, 0)},
                 1 => {self.mov(-1, 0)},
